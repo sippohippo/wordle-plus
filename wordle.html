@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wordle</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #121213;
+      color: #fff;
+      font-family: 'Clear Sans', 'Helvetica Neue', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid #3a3a3c;
+      text-align: center;
+      padding: 12px 16px;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 0.1rem;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    /* ── Layout ── */
+    #app {
+      display: flex;
+      flex: 1;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 24px;
+      padding: 20px 16px 0;
+    }
+
+    /* ── Game Area (center) ── */
+    #game-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    /* ── Board ── */
+    #board {
+      display: grid;
+      grid-template-rows: repeat(6, 62px);
+      grid-template-columns: repeat(5, 62px);
+      gap: 5px;
+    }
+
+    .tile {
+      width: 62px;
+      height: 62px;
+      border: 2px solid #3a3a3c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #fff;
+      background: #121213;
+      position: relative;
+      user-select: none;
+      transition: border-color 0.05s;
+    }
+
+    .tile[data-letter] { border-color: #565758; }
+
+    .tile.pop {
+      animation: pop 0.1s ease;
+    }
+
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
+
+    .tile.reveal {
+      animation: reveal 0.5s ease forwards;
+    }
+
+    @keyframes reveal {
+      0%   { transform: scaleY(1); }
+      49%  { transform: scaleY(0); }
+      50%  { transform: scaleY(0); }
+      100% { transform: scaleY(1); }
+    }
+
+    .tile.correct  { background: #538d4e; border-color: #538d4e; }
+    .tile.present  { background: #b59f3b; border-color: #b59f3b; }
+    .tile.absent   { background: #3a3a3c; border-color: #3a3a3c; }
+
+    .row-shake {
+      animation: shake 0.5s ease;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 50%, 90% { transform: translateX(-4px); }
+      30%, 70% { transform: translateX(4px); }
+    }
+
+    /* ── Definition Preview ── */
+    #definition-preview {
+      width: 340px;
+      min-height: 48px;
+      background: #1a1a1b;
+      border: 1px solid #3a3a3c;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      color: #aaa;
+      line-height: 1.5;
+      transition: opacity 0.2s;
+    }
+
+    #definition-preview.hidden { opacity: 0; pointer-events: none; }
+
+    #definition-preview .def-word {
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+      font-size: 0.88rem;
+      margin-bottom: 4px;
+    }
+
+    #definition-preview .def-pos {
+      font-style: italic;
+      color: #818384;
+      margin-right: 6px;
+    }
+
+    /* ── Keyboard ── */
+    #keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      user-select: none;
+    }
+
+    .kb-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+    }
+
+    .key {
+      height: 58px;
+      min-width: 43px;
+      padding: 0 4px;
+      border: none;
+      border-radius: 4px;
+      background: #818384;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-transform: uppercase;
+      transition: background 0.2s;
+      flex: 0 0 auto;
+    }
+
+    .key.wide { min-width: 65px; font-size: 0.75rem; }
+
+    .key:active { filter: brightness(0.85); }
+
+    .key.correct { background: #538d4e; }
+    .key.present { background: #b59f3b; }
+    .key.absent  { background: #3a3a3c; }
+
+    /* ── Side Panel ── */
+    #side-panel {
+      width: 280px;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: #3a3a3c #121213;
+    }
+
+    #side-panel::-webkit-scrollbar { width: 5px; }
+    #side-panel::-webkit-scrollbar-track { background: #121213; }
+    #side-panel::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 3px; }
+
+    #side-panel-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #818384;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #3a3a3c;
+    }
+
+    .history-entry {
+      background: #1a1a1b;
+      border: 1px solid #3a3a3c;
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mini-tiles {
+      display: flex;
+      gap: 4px;
+    }
+
+    .mini-tile {
+      width: 28px;
+      height: 28px;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+    }
+
+    .mini-tile.correct { background: #538d4e; }
+    .mini-tile.present { background: #b59f3b; }
+    .mini-tile.absent  { background: #3a3a3c; }
+
+    .history-def {
+      font-size: 0.78rem;
+      color: #aaa;
+      line-height: 1.45;
+    }
+
+    .history-def .def-word {
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+
+    .history-def .def-pos {
+      font-style: italic;
+      color: #818384;
+      margin-right: 4px;
+    }
+
+    /* ── Toast ── */
+    #toast-container {
+      position: fixed;
+      top: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 999;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: #fff;
+      color: #121213;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 10px 18px;
+      border-radius: 4px;
+      animation: toastIn 0.15s ease, toastOut 0.3s ease 1.4s forwards;
+      pointer-events: none;
+    }
+
+    @keyframes toastIn  { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+
+    /* ── Game Over Overlay ── */
+    #gameover-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #gameover-overlay.visible { display: flex; }
+
+    #gameover-box {
+      background: #1a1a1b;
+      border: 1px solid #3a3a3c;
+      border-radius: 10px;
+      padding: 32px 40px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 360px;
+      width: 90%;
+    }
+
+    #gameover-box h2 { font-size: 1.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
+    #gameover-box .answer-reveal { font-size: 2rem; font-weight: 700; color: #538d4e; letter-spacing: 0.15em; }
+    #gameover-box .answer-def { font-size: 0.85rem; color: #aaa; line-height: 1.5; }
+
+    #play-again-btn {
+      background: #538d4e;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 14px 28px;
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      transition: background 0.2s;
+    }
+
+    #play-again-btn:hover { background: #6aaf65; }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      #app { flex-direction: column; align-items: center; }
+      #side-panel { width: 100%; max-height: 40vh; }
+      #board { grid-template-rows: repeat(6, 54px); grid-template-columns: repeat(5, 54px); }
+      .tile { width: 54px; height: 54px; font-size: 1.7rem; }
+      #definition-preview { width: 290px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>Wordle</header>
+
+<div id="app">
+  <div id="game-area">
+    <div id="board"></div>
+    <div id="definition-preview" class="hidden"></div>
+    <div id="keyboard"></div>
+  </div>
+
+  <div id="side-panel">
+    <div id="side-panel-title">Guess History</div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div id="gameover-overlay">
+  <div id="gameover-box">
+    <h2 id="gameover-title">Game Over</h2>
+    <div class="answer-reveal" id="gameover-answer"></div>
+    <div class="answer-def" id="gameover-def"></div>
+    <button id="play-again-btn">Play Again</button>
+  </div>
+</div>
+
+<script>
+// ── Word List ──────────────────────────────────────────────────────────────
+const TARGET_WORDS = [
+  'ABOUT','ABOVE','ABUSE','ACTOR','ACUTE','ADMIT','ADOPT','ADULT','AFTER','AGAIN',
+  'AGENT','AGREE','AHEAD','ALARM','ALBUM','ALERT','ALIEN','ALIGN','ALLEY','ALLOW',
+  'ALONE','ALONG','ALTER','ANGEL','ANGRY','ANIME','ANKLE','APART','APPLE','APPLY',
+  'ARGUE','ARISE','ARMOR','ARRAY','ARROW','ASIDE','ASKED','ASSET','ATLAS','ATONE',
+  'AUDIT','AVOID','AWAKE','AWARE','AWFUL','BASIC','BATCH','BEACH','BEARD','BEAST',
+  'BEGIN','BEING','BELLY','BELOW','BENCH','BIRTH','BISON','BITTER','BLACK','BLADE',
+  'BLAME','BLAND','BLAST','BLAZE','BLEED','BLESS','BLIND','BLOCK','BLOOD','BLOOM',
+  'BLOWN','BOARD','BONUS','BOOST','BOOTH','BORED','BOUND','BRAIN','BRAND','BRAVE',
+  'BREAK','BREED','BRICK','BRIDE','BRIEF','BRING','BRISK','BROAD','BROKE','BROWN',
+  'BRUSH','BUILD','BUILT','BUNCH','BURST','BUYER','CABIN','CAMEL','CANDY','CARRY',
+  'CATCH','CAUSE','CEASE','CHAIN','CHAIR','CHAOS','CHARM','CHART','CHASE','CHEAP',
+  'CHECK','CHEEK','CHEER','CHESS','CHEST','CHIEF','CHILD','CHILL','CHOIR','CHUNK',
+  'CIVIC','CIVIL','CLAIM','CLAMP','CLASH','CLASS','CLEAN','CLEAR','CLERK','CLICK',
+  'CLIMB','CLING','CLOAK','CLOCK','CLONE','CLOSE','CLOTH','CLOUD','CLOWN','CLUE',
+  'COACH','COAST','COULD','COUNT','COURT','COVER','CRACK','CRAFT','CRASH','CRAWL',
+  'CRAZY','CREAM','CREEK','CREST','CRIME','CRISP','CROSS','CROWD','CROWN','CRUSH',
+  'CURVE','CYCLE','DAILY','DANCE','DATUM','DAWN','DEALT','DEATH','DEBUT','DECAY',
+  'DELAY','DELTA','DEMON','DENSE','DEPOT','DEPTH','DERBY','DEVIL','DISCO','DIRTY',
+  'DOUBT','DOUGH','DRAFT','DRAIN','DRAMA','DRANK','DRAWN','DREAM','DRESS','DRIFT',
+  'DRINK','DRIVE','DROVE','DRONE','DROOL','DROOP','DROVE','DROWN','DYING','EAGER',
+  'EARLY','EARTH','EIGHT','ELITE','EMPTY','ENEMY','ENJOY','ENTER','EQUAL','ERROR',
+  'ESSAY','EVERY','EXACT','EXIST','EXTRA','FABLE','FACED','FAITH','FALSE','FANCY',
+  'FATAL','FEAST','FENCE','FEVER','FIELD','FIFTH','FIFTY','FIGHT','FINAL','FIRST',
+  'FIXED','FLAKE','FLAME','FLARE','FLASH','FLEET','FLESH','FLOAT','FLOOD','FLOOR',
+  'FLOUR','FLUID','FLUTE','FOCUS','FORCE','FORGE','FORTH','FOUND','FRAME','FRAUD',
+  'FRESH','FRONT','FROST','FROZE','FRUIT','FULLY','FUNNY','GAMER','GHOST','GIANT',
+  'GIVEN','GLARE','GLASS','GLAZE','GLOBE','GLOOM','GLOOM','GLORY','GLOSS','GLOVE',
+  'GOING','GRACE','GRADE','GRAIN','GRAND','GRANT','GRASP','GRASS','GRAVE','GREAT',
+  'GREEN','GREET','GRIEF','GRILL','GRIND','GROAN','GROIN','GROPE','GROSS','GROUP',
+  'GROVE','GROWN','GUARD','GUESS','GUEST','GUIDE','GUILE','GUILT','GUSTO','HABIT',
+  'HAPPY','HARSH','HAVEN','HEART','HEAVY','HEDGE','HELPS','HERBS','HINGE','HIPPO',
+  'HOIST','HOLLY','HOMER','HONOR','HOTEL','HOUSE','HUMAN','HUMOR','HURRY','IDEAL',
+  'IMAGE','IMPLY','INDEX','INNER','INPUT','INTER','INTRO','ISSUE','IVORY','JEWEL',
+  'JOINT','JOUST','JUDGE','JUICE','JUICY','KARMA','KAYAK','KNACK','KNEEL','KNIFE',
+  'KNOCK','KNOWN','LABEL','LANCE','LARGE','LASER','LATER','LAUGH','LAYER','LEARN',
+  'LEASE','LEAST','LEAVE','LEGAL','LEMON','LEVEL','LIGHT','LIMIT','LINEN','LIVER',
+  'LOCAL','LOGIC','LOOSE','LOVER','LOWER','LOYAL','LUCKY','LUNAR','LYING','MAGIC',
+  'MAJOR','MANOR','MAPLE','MARCH','MATCH','MAYOR','MEDIA','MERCY','MERGE','MERIT',
+  'METAL','MIGHT','MINOR','MINUS','MIXED','MODEL','MONEY','MONTH','MORAL','MOTOR',
+  'MOUNT','MOUSE','MOUTH','MOVED','MOVIE','MULCH','MUSIC','NAIVE','NERVE','NEVER',
+  'NIGHT','NOBLE','NOISE','NORTH','NOTED','NOVEL','NURSE','NYMPH','OCCUR','OCEAN',
+  'OFFER','OFTEN','OLIVE','ONSET','OPERA','ORDER','OTHER','OUTER','OWING','OZONE',
+  'PAINT','PANEL','PANIC','PAPER','PASTA','PATCH','PAUSE','PEACE','PEACH','PEARL',
+  'PEDAL','PENNY','PHASE','PIANO','PILOT','PIXEL','PIZZA','PLACE','PLAIN','PLANE',
+  'PLANT','PLATE','PLAZA','PLEAD','PLUCK','PLUMB','PLUME','PLUMP','PLUNK','PLUSH',
+  'POINT','POLAR','POPPY','POWER','PRESS','PRICE','PRIDE','PRIME','PRINT','PRIOR',
+  'PRIZE','PROBE','PROOF','PROSE','PROUD','PROVE','PROWL','PRUNE','PULSE','PUNCH',
+  'PUPIL','PURSE','QUEEN','QUERY','QUEST','QUICK','QUIET','QUOTA','QUOTE','RABBI',
+  'RADAR','RADIO','RAISE','RALLY','RANCH','RANGE','RAPID','RATIO','REACH','REACT',
+  'REALM','REBEL','REFER','REIGN','RELAX','REPLY','RIDER','RIFLE','RIGHT','RISKY',
+  'RIVER','ROAST','ROBIN','ROCKY','ROUGH','ROUND','ROUTE','ROVER','ROYAL','RUGBY',
+  'RULER','RUSTY','SAINT','SALAD','SAUCE','SCALE','SCENE','SCENT','SCORE','SCOUT',
+  'SEIZE','SERVE','SEVEN','SHADE','SHAKE','SHALL','SHAPE','SHARE','SHARK','SHARP',
+  'SHEEP','SHEER','SHELF','SHELL','SHIFT','SHINE','SHIRT','SHOCK','SHORT','SHOUT',
+  'SHOVE','SIGHT','SINCE','SIXTH','SIXTY','SKILL','SLASH','SLEEP','SLICE','SLIDE',
+  'SLOPE','SMART','SMELL','SMILE','SMOKE','SNAKE','SOLAR','SOLID','SOLVE','SORRY',
+  'SOUTH','SPACE','SPARK','SPEAK','SPEED','SPEND','SPILL','SPINE','SPITE','SPLIT',
+  'SPOKE','SPOON','SPORT','SPRAY','STACK','STAFF','STAGE','STAIN','STAKE','STAND',
+  'STARK','START','STATE','STAYS','STEAL','STEEL','STEEP','STEER','STERN','STICK',
+  'STIFF','STILL','STING','STOCK','STONE','STOOD','STORE','STORM','STORY','STRAP',
+  'STRAW','STRIP','STUCK','STUDY','STUFF','STYLE','SUGAR','SUITE','SUPER','SURGE',
+  'SWAMP','SWEAR','SWEEP','SWEET','SWIFT','SWING','SWORD','TABLE','TASTE','TEACH',
+  'TEARS','TEETH','TEMPO','TENSE','TENTH','TERMS','THANK','THICK','THINK','THIRD',
+  'THREE','THROW','TIGER','TIGHT','TIMER','TIRED','TITLE','TODAY','TOKEN','TOOTH',
+  'TOPIC','TOTAL','TOUCH','TOUGH','TOWEL','TOWER','TOXIC','TRACE','TRACK','TRADE',
+  'TRAIL','TRAIN','TRAMP','TRASH','TREAD','TREAT','TREND','TRIAL','TRIBE','TRIED',
+  'TROOP','TRUCK','TRULY','TRYST','TUMOR','TUNER','TWIST','ULTRA','UNDER','UNIFY',
+  'UNION','UNITY','UNTIL','UPPER','UPSET','URBAN','USAGE','USHER','VALID','VALUE',
+  'VALVE','VIGIL','VIRAL','VIRUS','VISIT','VITAL','VIVID','VOCAL','VOICE','VOTER',
+  'VOWED','WAGON','WASTE','WATCH','WATER','WEARY','WEAVE','WEDGE','WEIRD','WHALE',
+  'WHEAT','WHEEL','WHERE','WHICH','WHILE','WHITE','WHOLE','WHOSE','WITCH','WOMAN',
+  'WOMEN','WORLD','WORRY','WORSE','WORST','WORTH','WOULD','WRATH','WRITE','WRONG',
+  'WROTE','YACHT','YIELD','YOUNG','YOUTH','ZEAL','ZEBRA'
+].filter(w => w.length === 5);
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const ROWS = 6;
+const COLS = 5;
+const KB_ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['ENTER','Z','X','C','V','B','N','M','⌫']
+];
+const API = word => `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`;
+
+// ── State ──────────────────────────────────────────────────────────────────
+let target = '';
+let grid = [];          // 6 rows × 5 tiles (DOM elements)
+let currentRow = 0;
+let currentCol = 0;
+let gameOver = false;
+let defCache = {};      // word → definition HTML string (or null if invalid)
+let keyStates = {};     // key → 'correct'|'present'|'absent'
+let lastFetchedWord = '';
+let fetchController = null; // AbortController for in-flight fetches
+
+// ── Init ──────────────────────────────────────────────────────────────────
+function init() {
+  target = TARGET_WORDS[Math.floor(Math.random() * TARGET_WORDS.length)];
+  currentRow = 0;
+  currentCol = 0;
+  gameOver = false;
+  keyStates = {};
+  lastFetchedWord = '';
+  defCache = {};
+
+  buildBoard();
+  buildKeyboard();
+  clearDefinitionPreview();
+  clearSidePanel();
+
+  document.getElementById('gameover-overlay').classList.remove('visible');
+}
+
+// ── Board ─────────────────────────────────────────────────────────────────
+function buildBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    const row = [];
+    for (let c = 0; c < COLS; c++) {
+      const tile = document.createElement('div');
+      tile.classList.add('tile');
+      board.appendChild(tile);
+      row.push(tile);
+    }
+    grid.push(row);
+  }
+}
+
+function getRowEl(r) {
+  // Returns a wrapper-like object; board tiles for row r form a logical row
+  return grid[r];
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────
+function buildKeyboard() {
+  const kb = document.getElementById('keyboard');
+  kb.innerHTML = '';
+  KB_ROWS.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.classList.add('kb-row');
+    row.forEach(k => {
+      const btn = document.createElement('button');
+      btn.classList.add('key');
+      btn.textContent = k;
+      btn.dataset.key = k;
+      if (k === 'ENTER' || k === '⌫') btn.classList.add('wide');
+      btn.addEventListener('click', () => handleKey(k));
+      rowEl.appendChild(btn);
+    });
+    kb.appendChild(rowEl);
+  });
+}
+
+function updateKeyboard() {
+  document.querySelectorAll('.key').forEach(btn => {
+    const k = btn.dataset.key;
+    if (keyStates[k]) {
+      btn.className = 'key' + (btn.classList.contains('wide') ? ' wide' : '') + ' ' + keyStates[k];
+    }
+  });
+}
+
+// ── Input Handling ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const k = e.key;
+  if (k === 'Enter') handleKey('ENTER');
+  else if (k === 'Backspace') handleKey('⌫');
+  else if (/^[a-zA-Z]$/.test(k)) handleKey(k.toUpperCase());
+});
+
+function handleKey(k) {
+  if (gameOver) return;
+
+  if (k === '⌫') {
+    deleteLetter();
+  } else if (k === 'ENTER') {
+    submitGuess();
+  } else if (/^[A-Z]$/.test(k)) {
+    addLetter(k);
+  }
+}
+
+function addLetter(letter) {
+  if (currentCol >= COLS) return;
+  const tile = grid[currentRow][currentCol];
+  tile.textContent = letter;
+  tile.dataset.letter = letter;
+  tile.classList.add('pop');
+  tile.addEventListener('animationend', () => tile.classList.remove('pop'), { once: true });
+  currentCol++;
+
+  if (currentCol === COLS) {
+    triggerDefinitionFetch();
+  } else {
+    clearDefinitionPreview();
+    lastFetchedWord = '';
+  }
+}
+
+function deleteLetter() {
+  if (currentCol <= 0) return;
+  currentCol--;
+  const tile = grid[currentRow][currentCol];
+  tile.textContent = '';
+  delete tile.dataset.letter;
+
+  clearDefinitionPreview();
+  lastFetchedWord = '';
+}
+
+// ── Definition Fetch ──────────────────────────────────────────────────────
+function getCurrentWord() {
+  return grid[currentRow].map(t => t.textContent).join('');
+}
+
+function triggerDefinitionFetch() {
+  const word = getCurrentWord();
+  if (word.length !== 5) return;
+
+  if (lastFetchedWord === word) return; // already fetched
+
+  // Abort any in-flight request
+  if (fetchController) fetchController.abort();
+  fetchController = new AbortController();
+
+  lastFetchedWord = word;
+
+  if (defCache.hasOwnProperty(word)) {
+    showDefinitionPreview(word, defCache[word]);
+    return;
+  }
+
+  // Show loading state
+  const preview = document.getElementById('definition-preview');
+  preview.classList.remove('hidden');
+  preview.innerHTML = `<span style="color:#555">Fetching definition…</span>`;
+
+  fetch(API(word), { signal: fetchController.signal })
+    .then(r => r.json())
+    .then(data => {
+      if (lastFetchedWord !== word) return; // stale
+      const defHtml = parseDefinition(data);
+      defCache[word] = defHtml;
+      showDefinitionPreview(word, defHtml);
+    })
+    .catch(err => {
+      if (err.name === 'AbortError') return;
+      if (lastFetchedWord !== word) return;
+      defCache[word] = null;
+      showDefinitionPreview(word, null);
+    });
+}
+
+function parseDefinition(data) {
+  if (!Array.isArray(data) || !data[0]?.meanings) return null;
+  const meaning = data[0].meanings[0];
+  if (!meaning) return null;
+  const pos = meaning.partOfSpeech || '';
+  const def = meaning.definitions?.[0]?.definition || '';
+  if (!def) return null;
+  return `<span class="def-pos">${pos}</span>${def}`;
+}
+
+function showDefinitionPreview(word, defHtml) {
+  const preview = document.getElementById('definition-preview');
+  if (!defHtml) {
+    preview.classList.remove('hidden');
+    preview.innerHTML = `<span style="color:#818384">No definition found — may not be accepted.</span>`;
+    return;
+  }
+  preview.classList.remove('hidden');
+  preview.innerHTML = `<div class="def-word">${word}</div>${defHtml}`;
+}
+
+function clearDefinitionPreview() {
+  const preview = document.getElementById('definition-preview');
+  preview.classList.add('hidden');
+  preview.innerHTML = '';
+}
+
+// ── Submit Guess ──────────────────────────────────────────────────────────
+async function submitGuess() {
+  if (currentCol < COLS) {
+    shakeRow(currentRow);
+    showToast('Not enough letters');
+    return;
+  }
+
+  const word = getCurrentWord();
+
+  // Validate word
+  const isTarget = word === target;
+  let isValid = isTarget;
+
+  if (!isValid) {
+    // Check cache first
+    if (defCache.hasOwnProperty(word)) {
+      isValid = defCache[word] !== null;
+    } else {
+      // Fetch now (synchronously wait)
+      showToast('Checking word…');
+      try {
+        if (fetchController) fetchController.abort();
+        fetchController = new AbortController();
+        const resp = await fetch(API(word), { signal: fetchController.signal });
+        const data = await resp.json();
+        const defHtml = parseDefinition(data);
+        defCache[word] = defHtml;
+        lastFetchedWord = word;
+        showDefinitionPreview(word, defHtml);
+        isValid = defHtml !== null;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        defCache[word] = null;
+        isValid = false;
+      }
+    }
+  }
+
+  if (!isValid) {
+    shakeRow(currentRow);
+    showToast('Not a valid word');
+    return;
+  }
+
+  // Score the guess
+  const result = scoreGuess(word, target);
+
+  // Reveal tiles with stagger
+  revealRow(currentRow, word, result, () => {
+    // Update key states
+    result.forEach((state, i) => {
+      const letter = word[i];
+      const prev = keyStates[letter];
+      if (!prev || prev === 'absent' || (prev === 'present' && state === 'correct')) {
+        keyStates[letter] = state;
+      }
+    });
+    updateKeyboard();
+
+    // Add to side panel
+    const defHtml = defCache[word] || null;
+    addHistoryEntry(word, result, defHtml);
+
+    clearDefinitionPreview();
+    lastFetchedWord = '';
+
+    if (word === target) {
+      const msgs = ['Genius!','Magnificent!','Impressive!','Splendid!','Great!','Phew!'];
+      showToast(msgs[currentRow] || 'Nice!');
+      gameOver = true;
+      setTimeout(() => showGameOver(true, word), 1600);
+    } else {
+      currentRow++;
+      currentCol = 0;
+      if (currentRow >= ROWS) {
+        gameOver = true;
+        setTimeout(() => showGameOver(false, target), 1600);
+      }
+    }
+  });
+}
+
+// ── Scoring ───────────────────────────────────────────────────────────────
+function scoreGuess(guess, answer) {
+  const result = Array(5).fill('absent');
+  const answerArr = answer.split('');
+  const guessArr  = guess.split('');
+  const used = Array(5).fill(false);
+
+  // First pass: correct
+  for (let i = 0; i < 5; i++) {
+    if (guessArr[i] === answerArr[i]) {
+      result[i] = 'correct';
+      used[i] = true;
+    }
+  }
+  // Second pass: present
+  for (let i = 0; i < 5; i++) {
+    if (result[i] === 'correct') continue;
+    for (let j = 0; j < 5; j++) {
+      if (!used[j] && guessArr[i] === answerArr[j]) {
+        result[i] = 'present';
+        used[j] = true;
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+// ── Reveal Animation ──────────────────────────────────────────────────────
+function revealRow(rowIdx, word, result, onComplete) {
+  const row = grid[rowIdx];
+  let completed = 0;
+
+  row.forEach((tile, i) => {
+    setTimeout(() => {
+      tile.classList.add('reveal');
+      // Change color at midpoint (250ms into the 500ms animation)
+      setTimeout(() => {
+        tile.classList.add(result[i]);
+      }, 250);
+
+      tile.addEventListener('animationend', () => {
+        tile.classList.remove('reveal');
+        completed++;
+        if (completed === COLS) onComplete();
+      }, { once: true });
+    }, i * 300);
+  });
+}
+
+// ── Shake Row ─────────────────────────────────────────────────────────────
+function shakeRow(rowIdx) {
+  const row = grid[rowIdx];
+  row.forEach(tile => {
+    tile.classList.add('row-shake');
+    tile.addEventListener('animationend', () => tile.classList.remove('row-shake'), { once: true });
+  });
+}
+
+// ── Side Panel ────────────────────────────────────────────────────────────
+function clearSidePanel() {
+  const panel = document.getElementById('side-panel');
+  // Keep the title
+  const title = document.getElementById('side-panel-title');
+  panel.innerHTML = '';
+  panel.appendChild(title);
+}
+
+function addHistoryEntry(word, result, defHtml) {
+  const panel = document.getElementById('side-panel');
+  const title = document.getElementById('side-panel-title');
+
+  const entry = document.createElement('div');
+  entry.classList.add('history-entry');
+
+  // Mini tiles
+  const tilesDiv = document.createElement('div');
+  tilesDiv.classList.add('mini-tiles');
+  word.split('').forEach((letter, i) => {
+    const mt = document.createElement('div');
+    mt.classList.add('mini-tile', result[i]);
+    mt.textContent = letter;
+    tilesDiv.appendChild(mt);
+  });
+  entry.appendChild(tilesDiv);
+
+  // Definition
+  const defDiv = document.createElement('div');
+  defDiv.classList.add('history-def');
+  if (defHtml) {
+    defDiv.innerHTML = `<span class="def-word">${word}</span> — ${defHtml}`;
+  } else {
+    defDiv.innerHTML = `<span class="def-word">${word}</span> <span style="color:#555">— no definition found</span>`;
+  }
+  entry.appendChild(defDiv);
+
+  // Insert after title (newest first)
+  if (title.nextSibling) {
+    panel.insertBefore(entry, title.nextSibling);
+  } else {
+    panel.appendChild(entry);
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+function showToast(msg, duration = 1700) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.classList.add('toast');
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), duration);
+}
+
+// ── Game Over ─────────────────────────────────────────────────────────────
+async function showGameOver(won, word) {
+  document.getElementById('gameover-title').textContent = won ? '🎉 You Won!' : 'Game Over';
+  document.getElementById('gameover-answer').textContent = word;
+
+  // Fetch answer definition
+  let defHtml = defCache[word];
+  if (defHtml === undefined) {
+    try {
+      const resp = await fetch(API(word));
+      const data = await resp.json();
+      defHtml = parseDefinition(data);
+      defCache[word] = defHtml;
+    } catch (_) {
+      defHtml = null;
+    }
+  }
+  const defEl = document.getElementById('gameover-def');
+  defEl.innerHTML = defHtml ? defHtml : '<span style="color:#555">Definition unavailable</span>';
+
+  document.getElementById('gameover-overlay').classList.add('visible');
+}
+
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  init();
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
