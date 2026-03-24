@@ -2,7 +2,9 @@
 
 > **Disclaimer: This is vibe coded slop.**
 
-A Wordle clone that shows you the definition of every word you type — before you even submit it. Guesses and their definitions are tracked in a side panel.
+A Wordle clone that shows you the definition of every word you type before you even submit it. Guesses and their definitions are tracked in a side panel.
+
+Note: the target word is drawn from a static list of roughly 1,200 common words, so the pool is relatively limited compared to a full dictionary.
 
 ## Features
 
